@@ -103,4 +103,33 @@ final class ConversionEngineTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: temp.file("B.jpg").path))
         XCTAssertEqual(collector.outcomes.count, 2)
     }
+
+    func testProcessReturnsOutcomeForConversion() async throws {
+        let temp = try TemporaryDirectory()
+        defer { temp.cleanUp() }
+
+        let source = temp.file("CHOSEN.HEIC")
+        try TestImages.writeHEIC(to: source)
+
+        let engine = makeEngine()
+        let outcome = await engine.process(source, force: true, waitForStability: false)
+
+        guard case let .converted(_, destination)? = outcome else {
+            return XCTFail("Expected a converted outcome")
+        }
+        XCTAssertEqual(destination, temp.file("CHOSEN.jpg"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path))
+    }
+
+    func testProcessReturnsNilForUnsupportedFile() async throws {
+        let temp = try TemporaryDirectory()
+        defer { temp.cleanUp() }
+
+        let source = temp.file("note.txt")
+        try Data("hello".utf8).write(to: source)
+
+        let engine = makeEngine()
+        let outcome = await engine.process(source, force: true, waitForStability: false)
+        XCTAssertNil(outcome)
+    }
 }

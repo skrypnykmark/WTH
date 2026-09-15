@@ -40,39 +40,57 @@ public actor ConversionEngine {
         outcomeHandler = handler
     }
 
-    /// Processes a single candidate file.
+    /// Processes a single candidate file and returns the outcome, if any.
     ///
-    /// - Parameter force: When `true`, a file that previously failed is retried
-    ///   (used by the manual "Convert Existing Now" action).
-    public func process(_ source: URL, force: Bool = false) async {
+    /// - Parameters:
+    ///   - force: When `true`, a file that previously failed is retried.
+    ///   - waitForStability: When `false`, conversion starts immediately instead
+    ///     of waiting for the file to stop changing. Used for files the user
+    ///     explicitly chose, which are already fully written.
+    /// - Returns: The outcome, or `nil` when the file was unsupported, already
+    ///   in flight, or previously failed and not forced.
+    @discardableResult
+    public func process(
+        _ source: URL,
+        force: Bool = false,
+        waitForStability: Bool = true
+    ) async -> ConversionOutcome? {
         let key = source.standardizedFileURL.path
 
-        guard !inFlight.contains(key) else { return }
-        if failed.contains(key), !force { return }
+        guard !inFlight.contains(key) else { return nil }
+        if failed.contains(key), !force { return nil }
         if force { failed.remove(key) }
 
         switch resolver.resolve(source: source) {
         case .skipUnsupported:
-            return
+            return nil
 
         case .skipExistingJPEG(let destination):
-            emit(.skippedExistingJPEG(source: source, destination: destination))
+            let outcome = ConversionOutcome.skippedExistingJPEG(source: source, destination: destination)
+            emit(outcome)
+            return outcome
 
         case .convert(let destination):
             inFlight.insert(key)
             defer { inFlight.remove(key) }
 
             do {
-                _ = try await stabilityChecker.waitUntilStable(at: source)
+                if waitForStability {
+                    _ = try await stabilityChecker.waitUntilStable(at: source)
+                }
                 try converter.convert(source: source, destination: destination, quality: quality)
                 failed.remove(key)
                 Log.engine.info("Converted \(source.lastPathComponent, privacy: .public) to JPEG.")
-                emit(.converted(source: source, destination: destination))
+                let outcome = ConversionOutcome.converted(source: source, destination: destination)
+                emit(outcome)
+                return outcome
             } catch {
                 failed.insert(key)
                 let message = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
                 Log.engine.error("Conversion failed for \(source.lastPathComponent, privacy: .public): \(message, privacy: .public)")
-                emit(.failed(source: source, message: message))
+                let outcome = ConversionOutcome.failed(source: source, message: message)
+                emit(outcome)
+                return outcome
             }
         }
     }

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct MenuBarView: View {
@@ -20,6 +21,11 @@ struct MenuBarView: View {
         }
         .padding(14)
         .frame(width: 320)
+        .background(
+            MenuBarWindowAccessor { window in
+                model.attachMenuBarWindow(window)
+            }
+        )
     }
 
     private var header: some View {
@@ -95,6 +101,9 @@ struct MenuBarView: View {
 
     private var actions: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Button("Choose HEIC Files…") {
+                model.convertSelectedFiles()
+            }
             Button("Convert Existing HEIC Files Now") {
                 model.convertExistingNow()
             }
@@ -118,5 +127,29 @@ struct MenuBarView: View {
 
     private static var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+    }
+}
+
+/// Reports the hosting window of the menu bar extra so it can be dismissed.
+private struct MenuBarWindowAccessor: NSViewRepresentable {
+    let onWindow: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> WindowReportingView {
+        let view = WindowReportingView()
+        view.onWindow = onWindow
+        return view
+    }
+
+    func updateNSView(_ nsView: WindowReportingView, context: Context) {
+        nsView.onWindow = onWindow
+    }
+}
+
+private final class WindowReportingView: NSView {
+    var onWindow: ((NSWindow?) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onWindow?(window)
     }
 }

@@ -38,6 +38,7 @@ that file instead of overwriting it.
 - Keeps EXIF, GPS, TIFF, IPTC, and the embedded color profile, and bakes in the
   EXIF orientation so the JPEG looks right everywhere.
 - Keeps the original HEIC and never overwrites an existing JPEG.
+- Also converts HEIC files you pick yourself, from anywhere on your Mac.
 - Converts each photo as soon as it lands in the folder.
 - Has a toggle for automatic conversion and an optional Launch at Login.
 - Has no third-party dependencies.
@@ -83,6 +84,9 @@ cp -R ~/Library/Developer/Xcode/DerivedData/WTH-*/Build/Products/Release/WTH.app
 
 The menu also has:
 
+- **Choose HEIC Files…** — pick any HEIC file on your Mac, wherever it lives,
+  and convert it to JPEG. When it finishes, the folder opens in Finder with the
+  new JPEGs selected.
 - **Convert Existing HEIC Files Now** — scans `~/Downloads` and converts any
   HEIC files that don't already have a JPEG.
 - **Open Downloads Folder**.

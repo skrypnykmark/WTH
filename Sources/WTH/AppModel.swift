@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import UniformTypeIdentifiers
 import WTHCore
 
 /// The application's observable state and coordination layer.
@@ -22,6 +23,7 @@ final class AppModel: ObservableObject {
     private let watcher: DownloadsWatcher
     private let launchAtLogin: LaunchAtLogin
 
+    private weak var menuBarWindow: NSWindow?
     private var isStarted = false
 
     private init() {
@@ -99,6 +101,56 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Presents a file picker and converts the chosen HEIC files to JPEG.
+    func convertSelectedFiles() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.heic, .heif]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.message = "Choose HEIC photos to convert to JPEG."
+        panel.prompt = "Convert"
+
+        dismissMenuBarUI()
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK else { return }
+
+        let urls = panel.urls
+        guard !urls.isEmpty else { return }
+
+        statusText = "Converting \(urls.count) file\(urls.count == 1 ? "" : "s")…"
+        Task {
+            var converted = 0
+            var skipped = 0
+            var failed = 0
+            var destinations: [URL] = []
+
+            for url in urls {
+                if let outcome = await engine.process(url, force: true, waitForStability: false) {
+                    switch outcome {
+                    case .converted(_, let destination):
+                        converted += 1
+                        destinations.append(destination)
+                    case .skippedExistingJPEG:
+                        skipped += 1
+                    case .failed:
+                        failed += 1
+                    }
+                }
+            }
+
+            applyAutomaticConversionState()
+            presentConversionSummary(converted: converted, skipped: skipped, failed: failed)
+            revealInFinder(destinations)
+        }
+    }
+
+    /// Stores the hosting window of the menu bar extra so it can be dismissed.
+    func attachMenuBarWindow(_ window: NSWindow?) {
+        guard let window else { return }
+        menuBarWindow = window
+    }
+
     func retryAccess() {
         watcher.stop()
         Task {
@@ -126,6 +178,38 @@ final class AppModel: ObservableObject {
         if case .converted = outcome {
             lastConversionDate = Date()
         }
+    }
+
+    private func presentConversionSummary(converted: Int, skipped: Int, failed: Int) {
+        var lines: [String] = []
+        if converted > 0 {
+            lines.append("Converted \(converted) file\(converted == 1 ? "" : "s") to JPEG.")
+        }
+        if skipped > 0 {
+            lines.append("Skipped \(skipped) file\(skipped == 1 ? "" : "s") because a JPEG already exists.")
+        }
+        if failed > 0 {
+            lines.append("Couldn't convert \(failed) file\(failed == 1 ? "" : "s").")
+        }
+        guard !lines.isEmpty else { return }
+
+        let alert = NSAlert()
+        alert.messageText = failed > 0 ? "Conversion finished with issues" : "Conversion complete"
+        alert.informativeText = lines.joined(separator: "\n")
+        alert.alertStyle = failed > 0 ? .warning : .informational
+        alert.addButton(withTitle: "OK")
+
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    private func dismissMenuBarUI() {
+        menuBarWindow?.close()
+    }
+
+    private func revealInFinder(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 
     private func applyAutomaticConversionState() {
